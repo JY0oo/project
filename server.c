@@ -1,3 +1,7 @@
+//
+// Created by kjy on 12/3/21.
+//
+
 #include<stdio.h>
 #include<stdlib.h>
 #include<unistd.h>
@@ -17,9 +21,9 @@ void send_msg(char *msg, int len);
 void error_handling(char *msg);
 char* serverState(int count);
 void menu(char port[]);
-char msgpay[BUF_SIZE];
+const char* recv_str(int sock);
+void send_str(int sock, char *buf);
 int flagz=0;
-//volatile int gameflag=0;
 
 /****************************/
 
@@ -84,210 +88,111 @@ int main(int argc, char *argv[])
 void *handle_clnt(void *arg) //in thread
 {
     int clnt_sock=*((int*)arg);
-    int str_len=0, i;
-    char msg[BUF_SIZE];
-
-    char filename[100];
-    FILE *fp;
-    char filebuf[100];
-
-    char name_cnt[2];
-
-    size_t bufsize = 0;
-    int nbyte;
-    memset(filebuf, 0x00,30);
-    char filesize[5];
-
-    int read_cnt;
-
-
-    char totalprice[100];
-    char howm[100];
-    int price =1;
-    int howmany =1;
+    int clnt_answer[3], correct_answer[3], check, i, j;
+    char game_input[10], game_result[10], chat_msg[BUF_SIZE], flag[2];
+    int str_len;
+    int out = 0, strike = 0, ball = 0;
+    char cal[100];
+    char num1[100];
+    char num2[100];
+    int num_2 =1;
+    int num_1 =1;
     int result=1;
+    char msg[BUF_SIZE];
     char result_c[100];
-
-    int gamenum;
-    char gamec[100];
-    char temp[100];
-
-    char flag[2];
-    char gamemsg[20];
-
-    int win[3],won[3];
-    int nan;
-    int buf1=0;
-    int o,s,b=0;
-    int j=0;
-    char under[2]; //base
-    char up[2]; // out
-    char please[2]; //strike
-    char buf[BUF_SIZE];
     while(1) {
-        srand((unsigned) time(NULL));
-        nan = (rand() % 900) + 100;
-        won[0] = nan / 100;
-        won[1] = (nan % 100) / 10;
-        won[2] = nan % 10;
-        if ( won[0] != 0 && won[1] != 0 && won[2] != 0 && won[0] != won[1] && won[0] != won[2] && won[1] != won[2] )
-            break;
-    }
-    printf("%d %d %d\n", won[0], won[1], won[2]);
-
-    while(1)
-    {//caculater ++ function
-        read(clnt_sock,flag,1);
-
-
+        // Select menu by the flag
+        if (read(clnt_sock,flag,1) < 0)
+            perror("flag read error");
+        // Bulls and cows game start
         if(strcmp(flag,"`")==0)//ducth pay
         {
 
-            read(clnt_sock, howm, 2);//People
-            howmany = atoi(howm);
+            read(clnt_sock, num1, BUF_SIZE);//첫번째
+            num_1 = atoi(num1);
 
-            read(clnt_sock, totalprice, 10);//Total Price
-            price = atoi(totalprice);
+            read(clnt_sock, cal, 2);//기호
 
+            read(clnt_sock, num2, 2); // 두번째
+            num_2 = atoi(num2);
+            if (cal== "+"){
+                result = num_2 + num_1; // caculate
+                sprintf(result_c,"%d",result);
+                strcat(msg,result_c);
+            }
+            else if(cal == "-"){
+                result = num_1 - num_2 ; // caculate
+                sprintf(result_c,"%d",result);
+                strcat(msg,result_c);
+            }
+            else if(cal == "/"){
+                result = num_1/num_2 ; // caculate
+                sprintf(result_c,"%d",result);
+                strcat(msg,result_c);
+            }
+            else if(cal == "*"){
+                result = num_1 * num_2 ; // caculate
+                sprintf(result_c,"%d",result);
+                strcat(msg,result_c);
+            }
+            /*strcpy(msg," people : ");
+            strcat(msg, num1);
 
-            strcpy(msg," people : ");
-            strcat(msg,howm);
-
-            strcat(msg,",  totalprice : ");//msg add information
-            strcat(msg,totalprice);
+            strcat(msg,"  cal : ");//msg add information
+            strcat(msg, cal);
 
             strcat(msg," won ,  Per person: ");
-            result = price/howmany; // caculate
-            sprintf(result_c,"%d",result);
-            strcat(msg,result_c);//msg add result
+            */
 
-            strcat(msg," won -");
+            strcat(msg," result = ");
             str_len=strlen(msg);
         }
-
-        else if (strcmp(flag,")")==0) /////game//////////////////////////////////
-        {
-            while(strcmp(flag,")")==0)
-            {
-                read(clnt_sock,gamec,4);
-
-                buf1 =atoi(gamec);
-                win[0] = buf1 / 100;
-                win[1] = (buf1 % 100) / 10;
-                win[2] = buf1 % 10;
-
-                //	strcpy(msg,gamec);
-                str_len=strlen(msg);
-
-                for(i=0;i<3;i++)
-                {
-                    for(j=0;j<3;j++)
-                    {
-                        if(i == j)
-                        {
-                            if(won[i] == win[j])
-                                s++;
-                        }
-                        else if(won[i] == win[j])
-                        {
-                            b++;
-                        }
-                    }
-                }
-                o = 3 - (s + b);
-                if(s==3)
-                {
-                    buf[0] = s;
-                    buf[1] = b;
-                    buf[2] = o;
-                    write(clnt_sock, buf,BUF_SIZE);
+        else if (strcmp(flag, ")") == 0) {
+            // correct_answer random generation
+            i = 1;
+            srand((unsigned int)time(NULL));
+            correct_answer[0] = rand() % 10;
+            while(i < 3) {
+                correct_answer[i] = rand() % 10;
+                for (check = 0 ; check < i; check++)
+                    if (correct_answer[check] == correct_answer[i]) break;
+                if (check == i) i++;
+            }
+            printf("correct_answer is : %d %d %d\n", correct_answer[0], correct_answer[1], correct_answer[2]);
+            while (1) {
+                // Read client answer
+                if (read(clnt_sock,game_input,10) < 0)
+                    perror("game_input read error");
+                for (i = 0; i < 3; i++)
+                    clnt_answer[i] = (int)game_input[i] - 48;
+                // Calculate strike, ball, out
+                strike = ball = out = 0;
+                for (i = 0; i < 3; i++) {
+                    for (j = 0; j < 3; j++) {
+                        if (correct_answer[i] == clnt_answer[j]) {
+                            if (i == j)
+                                strike++;
+                            else
+                                ball++; } } }
+                out = 3 - (strike + ball);
+                // Send game result
+                sprintf(game_result, "%d%d%d", strike, ball, out);
+                if (write(clnt_sock, game_result, strlen(game_result)) < 0)
+                    perror("game_result write error");
+                if (strike == 3)
                     break;
-                }
-                buf[0] = s;
-                buf[1] = b;
-                buf[2] = o;
-
-                write(clnt_sock, buf, BUF_SIZE);
-                s=0;
-                b=0;
-                o=0;
             }
-            memset(msg,0,sizeof(msg));
         }
-
-        else if (strcmp(flag,"_")==0)
-        {
-
-            memset(msg,0,sizeof(msg));
-            read(clnt_sock, name_cnt,2);
-            read(clnt_sock, filename, atoi(name_cnt));//filename read
-            fp=fopen(filename,"wb");
-
-            read(clnt_sock,filesize,5); //file size read
-
-            int asize = atoi(filesize);
-            read_cnt=read(clnt_sock,filebuf,asize);//file read
-
-            fwrite((void*)filebuf, 1, read_cnt, fp);//file fwrite
-
-            strcpy(msg,filesize);
-
-            strcpy(msg,filename);
-            strcat(msg," stored :\n");
-            strcat(msg,filebuf);
-
-            str_len=strlen(msg);
-            fclose(fp);
-
+        else {
+            str_len = read(clnt_sock, chat_msg, sizeof(chat_msg));
+            if (str_len == 0) break;
         }
-
-        else if (strcmp(flag,"}")==0)
-        {
-            int ifsize = 0;
-            char fsize[5];
-            memset(msg,0,sizeof(msg));
-            read(clnt_sock, name_cnt,2);
-            read(clnt_sock, filename, atoi(name_cnt));//filename read
-            //good
-            fp=fopen(filename,"rb");//file open
-
-            fseek(fp, 0, SEEK_END);
-            ifsize = ftell(fp);//fsize == filesize
-            fseek(fp, 0, SEEK_SET);
-
-            sprintf(fsize,"%d",ifsize);
-            write(clnt_sock,fsize,5);//file size write good
-
-
-            if(fp!=NULL)
-            {//fail
-
-                read_cnt=fread((void*)filebuf,1,ifsize,fp);//file read
-
-            }
-            usleep(500000);
-            strcpy(msg,filebuf);//go msg, filebuf
-            fclose(fp);
-
-        }
-
-
-        else
-        {
-            str_len=read(clnt_sock, msg, sizeof(msg));
-//30000===================================================
-            if(str_len==0)
-            {break;}
-        }
-
-        send_msg(msg, str_len);//read and write all clnt_cnt[]
+        send_msg(chat_msg, str_len);
     }
     // remove disconnected client
     pthread_mutex_lock(&mutx);
-    for (i=0; i<clnt_cnt; i++)
-    {
-        if (clnt_sock==clnt_socks[i])
-        {
+    for (i=0; i<clnt_cnt; i++) {
+        if (clnt_sock==clnt_socks[i]) {
             while(i++<clnt_cnt-1)
                 clnt_socks[i]=clnt_socks[i+1];
             break;
@@ -299,10 +204,7 @@ void *handle_clnt(void *arg) //in thread
     return NULL;
 }
 
-
-
-void send_msg(char* msg, int len)
-{
+void send_msg(char* msg, int len) {
     int i;
     pthread_mutex_lock(&mutx);
 
@@ -334,9 +236,20 @@ char* serverState(int count)
 void menu(char port[])
 {
     system("clear");
-    printf(" **** moon/sun chat server ****\n");
+    printf(" ====== chatting server ======\n");
     printf(" server port    : %s\n", port);
     printf(" server state   : %s\n", serverState(clnt_cnt));
     printf(" max connection : %d\n", MAX_CLNT);
-    printf(" ****          Log         ****\n\n");
+    printf(" ================================\n");
+}
+
+void send_str(int sock, char *buf) {
+    if (write(sock, buf, sizeof(char) * BUF_SIZE) < 0)
+        perror("write() error");
+}
+const char* recv_str(int sock) {
+    static char buf[BUF_SIZE] = "";
+    if (read(sock, buf, sizeof(char) * BUF_SIZE) < 0)
+        perror("read() error");
+    return buf;
 }
