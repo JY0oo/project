@@ -1,5 +1,3 @@
-
-
 #include<stdio.h>
 #include<stdlib.h>
 #include<unistd.h>
@@ -83,10 +81,10 @@ int main(int argc, char *argv[])
 
         pthread_create(&t_id, NULL, handle_clnt, (void*)&clnt_sock);//thread
         pthread_detach(t_id);
-        printf(" 연결된 클라이언트 IP : %s ", inet_ntoa(clnt_adr.sin_addr));
+        printf(" Connceted client IP : %s ", inet_ntoa(clnt_adr.sin_addr));
         printf("(%d-%d-%d %d:%d)\n", t->tm_year+1900, t->tm_mon+1, t->tm_mday,
                t->tm_hour, t->tm_min);//join time
-        printf(" 인원 (%d/100)\n", clnt_cnt);
+        printf(" chatter (%d/100)\n", clnt_cnt);
     }
     close(serv_sock);
     return 0;
@@ -99,35 +97,23 @@ void *handle_clnt(void *arg) //in thread
     char game_input[10], game_result[10], chat_msg[BUF_SIZE], flag[2];
     int str_len;
     int out = 0, strike = 0, ball = 0;
-    char cal[100];
-    char num1[100];
-    char num2[100];
-    int num_2 =1;
-    int num_1 =1;
-    int result=1;
-    char msg[BUF_SIZE];
-    char result_c[100];
-    char calc_info[100];
 
     while(1) {
         // Select menu by the flag
         if (read(clnt_sock,flag,1) < 0)
             perror("flag read error");
 
-        usleep(1000);
-
-        if (strcmp(flag, "/") == 0) // naive calculator
-        {
+        // naive calculator
+        if (strcmp(flag, "/") == 0) {
             CalcInfo *calc_info = (CalcInfo *)malloc(sizeof(CalcInfo));
-
+            usleep(500);
             if (read(clnt_sock, calc_info, 100) < 0)
                 perror("calc_info read error");
-
-            usleep(1000);
-
             calc_info = strCalc(calc_info);
+
             if (write(clnt_sock, calc_info, sizeof(CalcInfo)) < 0)
                 perror("calc_info write error");
+            free(calc_info);
         }
             // Bulls and cows game start
         else if (strcmp(flag, ")") == 0) {
@@ -159,6 +145,7 @@ void *handle_clnt(void *arg) //in thread
                                 ball++; } } }
                 out = 3 - (strike + ball);
                 // Send game result
+
                 sprintf(game_result, "%d%d%d", strike, ball, out);
                 if (write(clnt_sock, game_result, strlen(game_result)) < 0)
                     perror("game_result write error");
