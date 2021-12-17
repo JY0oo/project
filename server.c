@@ -14,14 +14,23 @@
 #define MAX_CLNT 100 //max socket comunication 100
 #define MAX_IP 30
 
+typedef struct CalcInfo {
+    double num1;
+    double num2;
+    char operator;
+    double result;
+} CalcInfo;
+
 void * handle_clnt(void *arg);
 void send_msg(char *msg, int len);
 void error_handling(char *msg);
 char* serverState(int count);
 void menu(char port[]);
 const char* recv_str(int sock);
-void send_str(int sock, char *buf);
+CalcInfo* strCalc(CalcInfo *calc_info);
 int flagz=0;
+
+
 
 /****************************/
 
@@ -98,53 +107,29 @@ void *handle_clnt(void *arg) //in thread
     int result=1;
     char msg[BUF_SIZE];
     char result_c[100];
+    char calc_info[100];
+
     while(1) {
         // Select menu by the flag
         if (read(clnt_sock,flag,1) < 0)
             perror("flag read error");
-        // Bulls and cows game start
-        if(strcmp(flag,"`")==0)//ducth pay
+
+        usleep(1000);
+
+        if (strcmp(flag, "/") == 0) // naive calculator
         {
+            CalcInfo *calc_info = (CalcInfo *)malloc(sizeof(CalcInfo));
 
-            read(clnt_sock, num1, BUF_SIZE);//첫번째
-            num_1 = atoi(num1);
+            if (read(clnt_sock, calc_info, 100) < 0)
+                perror("calc_info read error");
 
-            read(clnt_sock, cal, 2);//기호
+            usleep(1000);
 
-            read(clnt_sock, num2, 2); // 두번째
-            num_2 = atoi(num2);
-            if (cal== "+"){
-                result = num_2 + num_1; // caculate
-                sprintf(result_c,"%d",result);
-                strcat(msg,result_c);
-            }
-            else if(cal == "-"){
-                result = num_1 - num_2 ; // caculate
-                sprintf(result_c,"%d",result);
-                strcat(msg,result_c);
-            }
-            else if(cal == "/"){
-                result = num_1/num_2 ; // caculate
-                sprintf(result_c,"%d",result);
-                strcat(msg,result_c);
-            }
-            else if(cal == "*"){
-                result = num_1 * num_2 ; // caculate
-                sprintf(result_c,"%d",result);
-                strcat(msg,result_c);
-            }
-            /*strcpy(msg," people : ");
-            strcat(msg, num1);
-
-            strcat(msg,"  cal : ");//msg add information
-            strcat(msg, cal);
-
-            strcat(msg," won ,  Per person: ");
-            */
-
-            strcat(msg," result = ");
-            str_len=strlen(msg);
+            calc_info = strCalc(calc_info);
+            if (write(clnt_sock, calc_info, sizeof(CalcInfo)) < 0)
+                perror("calc_info write error");
         }
+            // Bulls and cows game start
         else if (strcmp(flag, ")") == 0) {
             // correct_answer random generation
             i = 1;
@@ -184,15 +169,15 @@ void *handle_clnt(void *arg) //in thread
         else {
             str_len = read(clnt_sock, chat_msg, sizeof(chat_msg));
             if (str_len == 0) break;
+            send_msg(chat_msg, str_len);
         }
-        send_msg(chat_msg, str_len);
     }
     // remove disconnected client
     pthread_mutex_lock(&mutx);
-    for (i=0; i<clnt_cnt; i++) {
-        if (clnt_sock==clnt_socks[i]) {
-            while(i++<clnt_cnt-1)
-                clnt_socks[i]=clnt_socks[i+1];
+    for (i = 0; i < clnt_cnt; i++) {
+        if (clnt_sock == clnt_socks[i]) {
+            while(i++ < clnt_cnt-1)
+                clnt_socks[i] = clnt_socks[i+1];
             break;
         }
     }
@@ -241,13 +226,21 @@ void menu(char port[])
     printf(" ================================\n");
 }
 
-void send_str(int sock, char *buf) {
-    if (write(sock, buf, sizeof(char) * BUF_SIZE) < 0)
-        perror("write() error");
-}
-const char* recv_str(int sock) {
-    static char buf[BUF_SIZE] = "";
-    if (read(sock, buf, sizeof(char) * BUF_SIZE) < 0)
-        perror("read() error");
-    return buf;
+CalcInfo* strCalc(CalcInfo *calc_info) {
+    switch (calc_info->operator) {
+        case '+':
+            calc_info->result = calc_info->num1 + calc_info->num2;
+            break;
+        case '-':
+            calc_info->result = calc_info->num1 - calc_info->num2;
+            break;
+        case '*':
+            calc_info->result = calc_info->num1 * calc_info->num2;
+            break;
+        case '/':
+            calc_info->result = calc_info->num1 / calc_info->num2;
+            break;
+        default:
+            ;
+    }
 }
