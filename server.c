@@ -1,30 +1,18 @@
+
+
 #include<stdio.h>
 #include<stdlib.h>
 #include<unistd.h>
 #include<string.h>
 #include<arpa/inet.h>
 #include<sys/socket.h>
+#include<netinet/in.h>
 #include<pthread.h>
 #include<time.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <netinet/in.h>
-#include <sys/types.h>
-#include <arpa/inet.h>
-#include <errno.h>
-
-
-
 
 #define BUF_SIZE 100
-#define NORMAL_SIZE 20
-
-void* send_msg(void* arg);
-void error_handling(char* msg);
-void menu();
-void changeName();
-void menuOptions(int sock);
+#define MAX_CLNT 100 //max socket comunication 100
+#define MAX_IP 30
 
 typedef struct CalcInfo {
     double num1;
@@ -33,206 +21,226 @@ typedef struct CalcInfo {
     double result;
 } CalcInfo;
 
-char name[NORMAL_SIZE]="[DEFALT]";     // name
-char serv_time[NORMAL_SIZE];        // server time
-char msg[BUF_SIZE];                    // msg
-char serv_port[NORMAL_SIZE];        // server port number
-char clnt_ip[NORMAL_SIZE];            // client ip address
-volatile int flagz = 0;
-pthread_mutex_t mutx;
+void * handle_clnt(void *arg);
+void send_msg(char *msg, int len);
+void error_handling(char *msg);
+char* serverState(int count);
+void menu(char port[]);
+const char* recv_str(int sock);
+CalcInfo* strCalc(CalcInfo *calc_info);
+int flagz=0;
 
-void input_fflush() {
-    while (1) {
-        if (getchar() == '\n') {
-            break;
-        }
-    }
-}
+
+
+/****************************/
+
+int clnt_cnt=0;//how much clnt ?
+int clnt_socks[MAX_CLNT]; // max join 100, socket [100]
+pthread_mutex_t mutx;
 
 int main(int argc, char *argv[])
 {
-    int sock;
-    struct sockaddr_in serv_addr;
-    pthread_t snd_thread;
-    void* thread_return;
-
-    if (argc!=4) {
-        printf(" Usage : %s <ip> <port> <name>\n", argv[0]);
-        exit(1);
-    }
-
-    /** local time **/
+    int serv_sock, clnt_sock;
+    struct sockaddr_in serv_adr, clnt_adr;
+    int clnt_adr_sz;
+    pthread_t t_id;
+    //socket create, and thread ready
+    /** time log **/
     struct tm *t;
     time_t timer = time(NULL);
     t=localtime(&timer);
-    sprintf(serv_time, "%d-%d-%d %d:%d", t->tm_year+1900, t->tm_mon+1, t->tm_mday, t->tm_hour, t->tm_min);
 
-    sprintf(name, "  [%s] -", argv[3]);
-    sprintf(clnt_ip, "%s", argv[1]);
-    sprintf(serv_port, "%s", argv[2]);
-    sock=socket(PF_INET, SOCK_STREAM, 0);
+    if (argc != 2)
+    {
+        printf(" Usage : %s <port>\n", argv[0]);
+        exit(1);
+    }
+    //port input please
+    menu(argv[1]);
+    //information
+    pthread_mutex_init(&mutx, NULL);
+    serv_sock=socket(PF_INET, SOCK_STREAM, 0);
 
-    memset(&serv_addr, 0, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_addr.s_addr = inet_addr(argv[1]);
-    serv_addr.sin_port = htons(atoi(argv[2]));
+    memset(&serv_adr, 0, sizeof(serv_adr));
+    serv_adr.sin_family=AF_INET;
+    serv_adr.sin_addr.s_addr=htonl(INADDR_ANY);
+    serv_adr.sin_port=htons(atoi(argv[1]));
+    //in serv_sock
+    if (bind(serv_sock, (struct sockaddr*)&serv_adr, sizeof(serv_adr))==-1)
+        error_handling("bind() error");
+    if (listen(serv_sock, 5)==-1)
+        error_handling("listen() error");
+    //error check
+    while(1)
+    {//loop accept
+        t=localtime(&timer);
+        clnt_adr_sz=sizeof(clnt_adr);
+        clnt_sock=accept(serv_sock, (struct sockaddr*)&clnt_adr, &clnt_adr_sz);
 
-    if (connect(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr))==-1)
-        error_handling(" conncet() error");
+        pthread_mutex_lock(&mutx);
+        clnt_socks[clnt_cnt++]=clnt_sock;//new client join macthing clnt_sock[]
+        pthread_mutex_unlock(&mutx);
 
-    // call menu
-    menu();
-    pthread_create(&snd_thread, NULL, send_msg, (void*)&sock);
-    pthread_join(snd_thread, &thread_return);
-    close(sock);
+        pthread_create(&t_id, NULL, handle_clnt, (void*)&clnt_sock);//thread
+        pthread_detach(t_id);
+        printf(" 연결된 클라이언트 IP : %s ", inet_ntoa(clnt_adr.sin_addr));
+        printf("(%d-%d-%d %d:%d)\n", t->tm_year+1900, t->tm_mon+1, t->tm_mday,
+               t->tm_hour, t->tm_min);//join time
+        printf(" 인원 (%d/100)\n", clnt_cnt);
+    }
+    close(serv_sock);
     return 0;
 }
 
-void* send_msg(void* arg) {
-    int sock=*((int*)arg);
-    char name_msg[NORMAL_SIZE+BUF_SIZE];
-    int gamenum;
-    char flag[2], game_input[10], game_result[10];
+void *handle_clnt(void *arg) //in thread
+{
+    int clnt_sock=*((int*)arg);
+    int clnt_answer[3], correct_answer[3], check, i, j;
+    char game_input[10], game_result[10], chat_msg[BUF_SIZE], flag[2];
+    int str_len;
+    int out = 0, strike = 0, ball = 0;
+    char cal[100];
+    char num1[100];
+    char num2[100];
+    int num_2 =1;
+    int num_1 =1;
+    int result=1;
+    char msg[BUF_SIZE];
+    char result_c[100];
+    char calc_info[100];
 
     while(1) {
-        fgets(msg, BUF_SIZE, stdin);
+        // Select menu by the flag
+        if (read(clnt_sock,flag,1) < 0)
+            perror("flag read error");
 
-        if (!strcmp(msg, "!menu\n")) {
-            menuOptions(sock);
-        }
-        //Calculator
-        if (flagz == 1) {
-            strcpy(flag,"/"); //function use flag
-            if (write(sock, flag, 1) < 0)
-                perror("flag write error");
+        usleep(1000);
 
+        if (strcmp(flag, "/") == 0) // naive calculator
+        {
             CalcInfo *calc_info = (CalcInfo *)malloc(sizeof(CalcInfo));
 
-            printf("\n Calculator Operation Start \n");
-
-            printf("First number  : ");
-            scanf("%lf", &(calc_info->num1));
-
-            printf("+, -,  * , / : ");
-            scanf("%s", &(calc_info->operator));
-
-            printf("Second number : ");
-            scanf("%lf", &(calc_info->num2));
-            calc_info->result = 0;
-
-            if (write(sock, calc_info, sizeof(CalcInfo)) < 0)
-                perror("calc_info write error");
-
-            if (read(sock, calc_info, sizeof(CalcInfo)) < 0)
+            if (read(clnt_sock, calc_info, 100) < 0)
                 perror("calc_info read error");
 
-            printf("%g %c %g = %g\n", calc_info->num1, calc_info->operator, calc_info->num2, calc_info->result);
-            printf("Return to Chat Server\n");
-            flagz = 0;
-            memset(msg,0,sizeof(msg));
-            input_fflush();
-            continue;
+            usleep(1000);
+
+            calc_info = strCalc(calc_info);
+            if (write(clnt_sock, calc_info, sizeof(CalcInfo)) < 0)
+                perror("calc_info write error");
         }
-        else if (flagz == 2) {
-            strcpy(flag, ")");
-            if (write(sock, flag, 1) < 0)
-                perror("flag write error");
-            while(1) {
-                printf("\n 야구게임 입니다~!  3자리 숫자를 입력하세요 : \n");
-                scanf("%d", &gamenum);
-                sprintf(game_input,"%d", gamenum);
-                if (write(sock, game_input,strlen(game_input)) < 0)
-                    perror("game_input write error");
-
-                if (read(sock, game_result, 10) < 0)
-                    perror("game_result read error");
-
-                printf("strike : %d, ball : %d, out : %d\n",
-                       (int)game_result[0] - 48, (int)game_result[1] - 48, (int)game_result[2] - 48);
-                if ((int)game_result[0] - 48 == 3) {
-                    printf("You Win\n");
-                    printf("Return to Chat Server\n");
-                    break;
-                }
+            // Bulls and cows game start
+        else if (strcmp(flag, ")") == 0) {
+            // correct_answer random generation
+            i = 1;
+            srand((unsigned int)time(NULL));
+            correct_answer[0] = rand() % 10;
+            while(i < 3) {
+                correct_answer[i] = rand() % 10;
+                for (check = 0 ; check < i; check++)
+                    if (correct_answer[check] == correct_answer[i]) break;
+                if (check == i) i++;
             }
-            flagz = 0;
-            memset(msg,0,sizeof(msg));
-            input_fflush();
-            continue;
+            printf("correct_answer is : %d %d %d\n", correct_answer[0], correct_answer[1], correct_answer[2]);
+            while (1) {
+                // Read client answer
+                if (read(clnt_sock,game_input,10) < 0)
+                    perror("game_input read error");
+                for (i = 0; i < 3; i++)
+                    clnt_answer[i] = (int)game_input[i] - 48;
+                // Calculate strike, ball, out
+                strike = ball = out = 0;
+                for (i = 0; i < 3; i++) {
+                    for (j = 0; j < 3; j++) {
+                        if (correct_answer[i] == clnt_answer[j]) {
+                            if (i == j)
+                                strike++;
+                            else
+                                ball++; } } }
+                out = 3 - (strike + ball);
+                // Send game result
+                sprintf(game_result, "%d%d%d", strike, ball, out);
+                if (write(clnt_sock, game_result, strlen(game_result)) < 0)
+                    perror("game_result write error");
+                if (strike == 3)
+                    break;
+            }
         }
-        else if (!strcmp(msg, "q\n") || !strcmp(msg, "Q\n")) {
-            close(sock);
-            exit(0);
+        else {
+            str_len = read(clnt_sock, chat_msg, sizeof(chat_msg));
+            if (str_len == 0) break;
+            send_msg(chat_msg, str_len);
         }
-        sprintf(name_msg, "%s %s", name, msg);
-        if (write(sock, name_msg, strlen(name_msg)) < 0)
-            perror("name msg write error");
     }
+    // remove disconnected client
+    pthread_mutex_lock(&mutx);
+    for (i = 0; i < clnt_cnt; i++) {
+        if (clnt_sock == clnt_socks[i]) {
+            while(i++ < clnt_cnt-1)
+                clnt_socks[i] = clnt_socks[i+1];
+            break;
+        }
+    }
+    clnt_cnt--;
+    pthread_mutex_unlock(&mutx);
+    close(clnt_sock);
     return NULL;
 }
-void menuOptions(int sock) {
-    int select;
-    // print menu
-    printf("\n\t------- 메뉴 -----------\n");
-    printf("\t1. 닉네임 변경 \n");
-    printf("\t2. 화면 초기화 \n\n");
-    printf("\t3. 계산기 \n\n");
-    printf("\t4. 야구 게임 \n\n");
 
-    printf("\tthe other key is cancel");
-    printf("\n\t-----------------------");
-    printf("\n\t>> ");
+void send_msg(char* msg, int len) {
+    int i;
+    pthread_mutex_lock(&mutx);
 
-    scanf("%d", &select);
-    while(getchar() != '\n');
+    for (i=0; i<clnt_cnt; i++)//all clnt
+        write(clnt_socks[i], msg, len);
+    pthread_mutex_unlock(&mutx);
+}
 
-    switch(select) {
-        // change user name
-        case 1:
-            changeName();flagz=0;
-            break;
-            // console update(time, clear chatting log)
-        case 2:
-            menu();flagz=0;
-            break;
-        case 3:
-            printf(" 계산기 실행  \n");
-            flagz=1;
-            break;
-        case 4:
-            printf("minigame 실행 \n");
-            flagz=2;
-            break;
-            // menu error
-        default:
-            printf("\tcancel.");flagz=0;
-            break;
-    }
-}
-void changeName() {
-    char nameTemp[100];
-    printf("\n\t새로운 이름을 입력하세요 -> ");
-    scanf("%s", nameTemp);
-    strcpy(msg,name);
-    strcat(msg," --> change name! --> ");
-    sprintf(name, "  [%s] -", nameTemp);
-    printf("\n\t변경 완료.\n\n");
-}
-void menu() {
-    system("clear");
-    printf(" ====== 클라이언트 =======\n");
-    printf(" 서버 포트 : %s \n", serv_port);
-    printf(" 클라이언트 IP   : %s \n", clnt_ip);
-    printf(" 사용자 이름  : %s \n", name);
-    printf(" 서버 시간 : %s \n", serv_time);
-    printf(" =======================\n");
-    printf(" 메뉴 이용시 !menu\n");
-    printf(" ========================\n");
-    printf(" 나가기 q & Q 입력\n\n");
-}
-void error_handling(char* msg)
+void error_handling(char *msg)
 {
     fputs(msg, stderr);
     fputc('\n', stderr);
     exit(1);
+}
+
+char* serverState(int count)
+{
+    char* stateMsg = malloc(sizeof(char) * 20);
+    strcpy(stateMsg ,"None");
+
+    if (count < 5)
+        strcpy(stateMsg, "Good");
+    else
+        strcpy(stateMsg, "Bad");
+
+    return stateMsg;
+}
+
+void menu(char port[])
+{
+    system("clear");
+    printf(" ====== chatting server =========\n");
+    printf(" 서버 포트    : %s\n", port);
+    printf(" 서버 상태   : %s\n", serverState(clnt_cnt));
+    printf(" 최대 인원  : %d\n", MAX_CLNT);
+    printf(" ================================\n");
+}
+
+CalcInfo* strCalc(CalcInfo *calc_info) {
+    switch (calc_info->operator) {
+        case '+':
+            calc_info->result = calc_info->num1 + calc_info->num2;
+            break;
+        case '-':
+            calc_info->result = calc_info->num1 - calc_info->num2;
+            break;
+        case '*':
+            calc_info->result = calc_info->num1 * calc_info->num2;
+            break;
+        case '/':
+            calc_info->result = calc_info->num1 / calc_info->num2;
+            break;
+        default:
+            ;
+    }
 }
