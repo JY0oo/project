@@ -138,7 +138,7 @@ void* send_msg(void* arg) {
             if (write(sock, flag, 1) < 0)
                 perror("flag write error");
             while(1) {
-                printf("\n 야구게임 입니다~!  3자리 숫자를 입력하세요 (0 제외): \n");
+                printf("\n 야구게임 입니다~!  3자리 숫자를 입력하세요 : \n");
                 scanf("%d", &gamenum);
                 sprintf(game_input,"%d", gamenum);
                 if (write(sock, game_input,strlen(game_input)) < 0)
@@ -173,12 +173,12 @@ void* send_msg(void* arg) {
 void menuOptions(int sock) {
     int select;
     // print menu
-    printf("\n\t------- 메뉴 --------\n");
+    printf("\n\t------- 메뉴 -----------\n");
     printf("\t1. 닉네임 변경 \n");
     printf("\t2. 화면 초기화 \n\n");
     printf("\t3. 계산기 \n\n");
     printf("\t4. 야구 게임 \n\n");
- 
+
     printf("\tthe other key is cancel");
     printf("\n\t-----------------------");
     printf("\n\t>> ");
@@ -220,15 +220,15 @@ void changeName() {
 }
 void menu() {
     system("clear");
-    printf(" ====== chatting client ======\n");
+    printf(" ====== 클라이언트 =======\n");
     printf(" 서버 포트 : %s \n", serv_port);
     printf(" 클라이언트 IP   : %s \n", clnt_ip);
     printf(" 사용자 이름  : %s \n", name);
     printf(" 서버 시간 : %s \n", serv_time);
-    printf(" ================================\n");
+    printf(" =======================\n");
     printf(" 메뉴 이용시 !menu\n");
-    printf(" ====================================\n");
-    printf(" Exit -> q & Q\n\n");
+    printf(" ========================\n");
+    printf(" 나가기 q & Q 입력\n\n");
 }
 void error_handling(char* msg)
 {
