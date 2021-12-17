@@ -22,11 +22,16 @@
 
 void* send_msg(void* arg);
 void error_handling(char* msg);
-ssize_t writen(int socketFD, const char *buffer, size_t fixedLength);
-ssize_t writeHeader(int socketFD, const char* buffer, size_t length);
 void menu();
 void changeName();
 void menuOptions(int sock);
+
+typedef struct CalcInfo {
+    double num1;
+    double num2;
+    char operator;
+    double result;
+} CalcInfo;
 
 char name[NORMAL_SIZE]="[DEFALT]";     // name
 char serv_time[NORMAL_SIZE];        // server time
@@ -36,11 +41,19 @@ char clnt_ip[NORMAL_SIZE];            // client ip address
 volatile int flagz = 0;
 pthread_mutex_t mutx;
 
+void input_fflush() {
+    while (1) {
+        if (getchar() == '\n') {
+            break;
+        }
+    }
+}
+
 int main(int argc, char *argv[])
 {
     int sock;
     struct sockaddr_in serv_addr;
-    pthread_t snd_thread, rcv_thread;
+    pthread_t snd_thread;
     void* thread_return;
 
     if (argc!=4) {
@@ -80,40 +93,44 @@ void* send_msg(void* arg) {
     char name_msg[NORMAL_SIZE+BUF_SIZE];
     int gamenum;
     char flag[2], game_input[10], game_result[10];
-    char cal[3];
-    char add[2];
-    int num1;
-    char num_1[100];
-    char num_2[100];
-    int num2;
 
     while(1) {
         fgets(msg, BUF_SIZE, stdin);
+
         if (!strcmp(msg, "!menu\n")) {
             menuOptions(sock);
         }
-        if(flagz==1)//..........................................
-        {
-            strcpy(msg,"`");//function use flag
-            write(sock, msg, 1);
+        //Calculator
+        if (flagz == 1) {
+            strcpy(flag,"/"); //function use flag
+            if (write(sock, flag, 1) < 0)
+                perror("flag write error");
+
+            CalcInfo *calc_info = (CalcInfo *)malloc(sizeof(CalcInfo));
+
+            printf("\n Calculator Operation Start \n");
 
             printf("First number  : ");
-            scanf("%d",&num1);
-            sprintf(num_1, "%d", num1);
-            write(sock, num_1, 100);// 첫번째 숫자
+            scanf("%lf", &(calc_info->num1));
 
-            printf(" +, -,  * , / : ");
-            scanf("%s", cal);
-            sprintf(add, "%s", cal);
-            write(sock, add, 2);// 사칙 연산
+            printf("+, -,  * , / : ");
+            scanf("%s", &(calc_info->operator));
 
-            printf(" Second number : ");
-            scanf("%d",&num2);
-            sprintf(num_2,"%d",num2);
-            write(sock, num_2, 100); // 두번째 숫자
+            printf("Second number : ");
+            scanf("%lf", &(calc_info->num2));
+            calc_info->result = 0;
 
-            flagz=0;
+            if (write(sock, calc_info, sizeof(CalcInfo)) < 0)
+                perror("calc_info write error");
+
+            if (read(sock, calc_info, sizeof(CalcInfo)) < 0)
+                perror("calc_info read error");
+
+            printf("%g %c %g = %g\n", calc_info->num1, calc_info->operator, calc_info->num2, calc_info->result);
+            printf("Return to Chat Server\n");
+            flagz = 0;
             memset(msg,0,sizeof(msg));
+            input_fflush();
             continue;
         }
         else if (flagz == 2) {
@@ -123,7 +140,6 @@ void* send_msg(void* arg) {
             while(1) {
                 printf("\n 야구게임 입니다~!  3자리 숫자를 입력하세요 (0 제외): \n");
                 scanf("%d", &gamenum);
-                while(getchar() != '\n');
                 sprintf(game_input,"%d", gamenum);
                 if (write(sock, game_input,strlen(game_input)) < 0)
                     perror("game_input write error");
@@ -141,6 +157,7 @@ void* send_msg(void* arg) {
             }
             flagz = 0;
             memset(msg,0,sizeof(msg));
+            input_fflush();
             continue;
         }
         else if (!strcmp(msg, "q\n") || !strcmp(msg, "Q\n")) {
@@ -159,9 +176,9 @@ void menuOptions(int sock) {
     printf("\n\t------- 메뉴 --------\n");
     printf("\t1. 닉네임 변경 \n");
     printf("\t2. 화면 초기화 \n\n");
-    printf("\t3. 베스킨라빈스 31 게임 \n\n");
+    printf("\t3. 계산기 \n\n");
     printf("\t4. 야구 게임 \n\n");
-
+ 
     printf("\tthe other key is cancel");
     printf("\n\t-----------------------");
     printf("\n\t>> ");
@@ -179,20 +196,12 @@ void menuOptions(int sock) {
             menu();flagz=0;
             break;
         case 3:
-            printf("dutchpay funtion start\n");
+            printf(" 계산기 실행  \n");
             flagz=1;
             break;
         case 4:
-            printf("minigame funtion start\n");
+            printf("minigame 실행 \n");
             flagz=2;
-            break;
-        case 5:
-            printf("filetransfer funtion start\n");
-            flagz=3;
-            break;
-        case 6:
-            printf("filedownload funtion start\n");
-            flagz=4;
             break;
             // menu error
         default:
@@ -202,22 +211,22 @@ void menuOptions(int sock) {
 }
 void changeName() {
     char nameTemp[100];
-    printf("\n\tInput new name -> ");
+    printf("\n\t새로운 이름을 입력하세요 -> ");
     scanf("%s", nameTemp);
     strcpy(msg,name);
     strcat(msg," --> change name! --> ");
     sprintf(name, "  [%s] -", nameTemp);
-    printf("\n\tComplete.\n\n");
+    printf("\n\t변경 완료.\n\n");
 }
 void menu() {
     system("clear");
     printf(" ====== chatting client ======\n");
-    printf(" server port : %s \n", serv_port);
-    printf(" client IP   : %s \n", clnt_ip);
-    printf(" chat name   : %s \n", name);
-    printf(" server time : %s \n", serv_time);
+    printf(" 서버 포트 : %s \n", serv_port);
+    printf(" 클라이언트 IP   : %s \n", clnt_ip);
+    printf(" 사용자 이름  : %s \n", name);
+    printf(" 서버 시간 : %s \n", serv_time);
     printf(" ================================\n");
-    printf(" if you want to select menu -> !menu\n");
+    printf(" 메뉴 이용시 !menu\n");
     printf(" ====================================\n");
     printf(" Exit -> q & Q\n\n");
 }
@@ -226,48 +235,4 @@ void error_handling(char* msg)
     fputs(msg, stderr);
     fputc('\n', stderr);
     exit(1);
-}
-ssize_t writen(int socketFD, const char *buffer, size_t fixedLength)
-{
-    size_t leftBytes = fixedLength;
-    ssize_t writenBytes = 0;
-    const char *readingPointer = buffer;
-
-    while(leftBytes > 0)
-    {
-        if((writenBytes = write(socketFD, readingPointer, leftBytes)) <= 0)
-        {
-            if(errno == EINTR)
-                writenBytes = 0; // Write again
-            else
-                return -1;
-        }
-        else
-        {
-            leftBytes -= writenBytes;
-            readingPointer += writenBytes;
-            // Write n bytes
-        }
-    }
-
-    return fixedLength - leftBytes;
-}
-ssize_t writeHeader(int socketFD, const char* buffer, size_t length)
-{
-    size_t messageLength = htonl(length);
-    ssize_t writeBytes;
-
-    // 길이를 먼저 보낸다.
-    writeBytes = writen(socketFD , (char*)&messageLength, sizeof(size_t));
-
-    if(writeBytes != sizeof(size_t))
-        return writeBytes < 0 ? -1 : 0;
-
-    // 그다음 문자열을 보낸다.
-    writeBytes = writen(socketFD, buffer, length);
-
-    if(writeBytes != length)
-        return writeBytes < 0 ? -1 : 0;
-
-    return writeBytes;
 }
