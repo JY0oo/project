@@ -21,6 +21,7 @@
 #define NORMAL_SIZE 20
 
 void* send_msg(void* arg);
+void* recv_msg(void* arg);
 void error_handling(char* msg);
 void menu();
 void changeName();
@@ -53,7 +54,7 @@ int main(int argc, char *argv[])
 {
     int sock;
     struct sockaddr_in serv_addr;
-    pthread_t snd_thread;
+    pthread_t snd_thread, rcv_thread;
     void* thread_return;
 
     if (argc!=4) {
@@ -77,13 +78,15 @@ int main(int argc, char *argv[])
     serv_addr.sin_addr.s_addr = inet_addr(argv[1]);
     serv_addr.sin_port = htons(atoi(argv[2]));
 
-    if (connect(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr))==-1)
+    if (connect(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) == -1)
         error_handling(" conncet() error");
 
     // call menu
     menu();
     pthread_create(&snd_thread, NULL, send_msg, (void*)&sock);
+    pthread_create(&rcv_thread, NULL, recv_msg, (void*)&sock);
     pthread_join(snd_thread, &thread_return);
+    pthread_join(rcv_thread, &thread_return);
     close(sock);
     return 0;
 }
@@ -93,6 +96,12 @@ void* send_msg(void* arg) {
     char name_msg[NORMAL_SIZE+BUF_SIZE];
     int gamenum;
     char flag[2], game_input[10], game_result[10];
+    char myInfo[BUF_SIZE];
+    int str_len;
+
+    printf(" >> join the chat !! \n");
+    sprintf(myInfo, "%s's join. IP_%s\n", name, clnt_ip);
+    write(sock, myInfo, strlen(myInfo));
 
     while(1) {
         fgets(msg, BUF_SIZE, stdin);
@@ -123,6 +132,8 @@ void* send_msg(void* arg) {
             if (write(sock, calc_info, sizeof(CalcInfo)) < 0)
                 perror("calc_info write error");
 
+
+
             if (read(sock, calc_info, sizeof(CalcInfo)) < 0)
                 perror("calc_info read error");
 
@@ -138,11 +149,12 @@ void* send_msg(void* arg) {
             if (write(sock, flag, 1) < 0)
                 perror("flag write error");
             while(1) {
-                printf("\n 야구게임 입니다~!  3자리 숫자를 입력하세요 : \n");
+                printf("\n 야구게임 입니다~!  3자리 숫자를 입력하세요 (0 제외): \n");
                 scanf("%d", &gamenum);
                 sprintf(game_input,"%d", gamenum);
                 if (write(sock, game_input,strlen(game_input)) < 0)
                     perror("game_input write error");
+
 
                 if (read(sock, game_result, 10) < 0)
                     perror("game_result read error");
@@ -164,9 +176,30 @@ void* send_msg(void* arg) {
             close(sock);
             exit(0);
         }
+        // Send message
+        strcpy(flag, "(");
+        if (write(sock, flag, 1) < 0)
+            perror("flag write error");
         sprintf(name_msg, "%s %s", name, msg);
         if (write(sock, name_msg, strlen(name_msg)) < 0)
             perror("name msg write error");
+
+        memset(msg,0,sizeof(msg));
+    }
+    return NULL;
+}
+void* recv_msg(void* arg) {
+    int sock=*((int*)arg);
+    char name_msg[NORMAL_SIZE+BUF_SIZE];
+    int str_len;
+
+    while(1)
+    {
+        str_len = read(sock, name_msg, NORMAL_SIZE+BUF_SIZE-1);
+        if (str_len==-1)
+            return (void*)-1;
+        name_msg[str_len]=0;
+        fputs(name_msg, stdout);
     }
     return NULL;
 }
@@ -189,21 +222,19 @@ void menuOptions(int sock) {
     switch(select) {
         // change user name
         case 1:
-            changeName();flagz=0;
+            changeName(); flagz=0;
             break;
             // console update(time, clear chatting log)
         case 2:
-            menu();flagz=0;
+            menu(); flagz=0;
             break;
         case 3:
-            printf(" 계산기 실행  \n");
             flagz=1;
             break;
         case 4:
-            printf("minigame 실행 \n");
+            printf("minigame funtion start\n");
             flagz=2;
             break;
-            // menu error
         default:
             printf("\tcancel.");flagz=0;
             break;
